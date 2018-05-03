@@ -1,0 +1,42 @@
+plugins {
+    id "org.jetbrains.kotlin.jvm" version "1.2.40"
+}
+
+apply plugin: 'java'
+apply plugin: 'groovy'
+
+group 'com.github.janbols'
+version '1.0-SNAPSHOT'
+
+sourceCompatibility = 1.8
+
+ext.libversion = [
+        arrow: "0.7.1"
+]
+
+repositories {
+    jcenter()
+    mavenCentral()
+}
+
+dependencies {
+    compile group: 'org.apache.commons', name: 'commons-lang3', version: '3.7'
+    compile group: 'org.functionaljava', name: 'functionaljava', version: '4.7'
+    compile group: 'org.functionaljava', name: 'functionaljava-java8', version: '4.7'
+    compile group: 'com.google.guava', name: 'guava', version: '24.1-jre'
+
+    compile "org.jetbrains.kotlin:kotlin-stdlib"
+    compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+
+    compile "io.arrow-kt:arrow-core:${libversion.arrow}"
+    compile "io.arrow-kt:arrow-syntax:${libversion.arrow}"
+    compile "io.arrow-kt:arrow-typeclasses:${libversion.arrow}"
+    compile "io.arrow-kt:arrow-data:${libversion.arrow}"
+    compile "io.arrow-kt:arrow-instances-core:${libversion.arrow}"
+    compile "io.arrow-kt:arrow-instances-data:${libversion.arrow}"
+
+    compile group: 'io.vavr', name: 'vavr', version: '0.9.2'
+
+    testCompile "org.spockframework:spock-core:1.1-groovy-2.4"
+}
+
