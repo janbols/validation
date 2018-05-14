@@ -1,9 +1,12 @@
 plugins {
-    id "org.jetbrains.kotlin.jvm" version "1.2.40"
+    id "org.jetbrains.kotlin.jvm" version "1.2.41"
 }
 
 apply plugin: 'java'
 apply plugin: 'groovy'
+apply plugin: 'kotlin-kapt'
+
+apply plugin: 'idea'
 
 group 'com.github.janbols'
 version '1.0-SNAPSHOT'
@@ -35,8 +38,38 @@ dependencies {
     compile "io.arrow-kt:arrow-instances-core:${libversion.arrow}"
     compile "io.arrow-kt:arrow-instances-data:${libversion.arrow}"
 
+    compile "io.arrow-kt:arrow-mtl:${libversion.arrow}"
+
+    kapt    "io.arrow-kt:arrow-annotations-processor:${libversion.arrow}"
+
+
     compile group: 'io.vavr', name: 'vavr', version: '0.9.2'
 
     testCompile "org.spockframework:spock-core:1.1-groovy-2.4"
 }
 
+
+
+idea {
+    module {
+        sourceDirs += files(
+                'build/generated/source/kapt/main',
+                'build/generated/source/kaptKotlin/main',
+                'build/tmp/kapt/main/kotlinGenerated')
+        generatedSourceDirs += files(
+                'build/generated/source/kapt/main',
+                'build/generated/source/kaptKotlin/main',
+                'build/tmp/kapt/main/kotlinGenerated')
+    }
+}
+
+
+configurations.all {
+    resolutionStrategy {
+        eachDependency {
+            if (requested.name == "kotlin-compiler-embeddable") {
+                useVersion("1.2.30")
+            }
+        }
+    }
+}
