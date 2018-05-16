@@ -7,13 +7,13 @@ import com.github.janbols.domain.Email
 import com.github.janbols.domain.Person
 import com.github.janbols.domain.PersonForm
 import com.github.janbols.domain.PersonName
-import com.github.janbols.validator.ArrowPersonValidator
+import com.github.janbols.validator.hk.HKArrowPersonValidator
 import spock.lang.Specification
 import spock.lang.Unroll
 
-class ArrowPersonValidatorSpec extends Specification {
+class HKArrowPersonValidatorSpec extends Specification {
 
-    def validator = new ArrowPersonValidator(new UserRepo.InMemory([
+    def validator = new HKArrowPersonValidator(new UserRepo.InMemory([
             1  : new PersonName("Donaldo", "Trumpo")
             , 2: new PersonName("Mata", "Hari")
     ]))
