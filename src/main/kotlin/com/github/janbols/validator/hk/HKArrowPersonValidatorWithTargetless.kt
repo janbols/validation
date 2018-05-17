@@ -25,9 +25,9 @@ import com.github.janbols.validator.hk.ExtraRules.optionalOr
 import com.github.janbols.validator.hk.ExtraRules.required
 
 
-class HKArrowPersonValidator(private val userRepo: UserRepo) {
+class HKArrowPersonValidatorWithTargetless(private val userRepo: UserRepo) {
 
-    fun <A> targettedApplicative(): KleisliApplicativeInstance<ValidatedPartialOf<Nel<String>>, A> =
+    fun <A> targetlessApplic(): KleisliApplicativeInstance<PartialInvalid, A> =
             Kleisli.applicative(Validated.applicative(Nel.semigroup<String>()))
 
 
@@ -39,29 +39,28 @@ class HKArrowPersonValidator(private val userRepo: UserRepo) {
                     value.valid()
             }
 
-    fun validate(value: PersonForm): Validated<Nel<String>, Person> {
+    fun validate(value: PersonForm): InvalidOr<Person> {
 
-        val firstNameRule: TargettedValRule<PersonForm, String> =
+        val firstNameRule: TargetlessValRule<PersonForm, String> =
                 required
                         .andThen(maxLength(250))
                         .local { pf: PersonForm -> pf.firstName }
                         .target(Field.FIRSTNAME)
 
-        val lastNameRule: TargettedValRule<PersonForm, String> =
+        val lastNameRule: TargetlessValRule<PersonForm, String> =
                 required
                         .andThen(maxLength(250))
                         .local { pf: PersonForm -> pf.lastName }
                         .target(Field.LASTNAME)
 
-        val nameRule: TargettedValRule<PersonForm, PersonName> =
-                targettedApplicative<PersonForm>().run {
-                    tupled(firstNameRule, lastNameRule)
+        val nameRule: TargetlessValRule<PersonForm, PersonName> =
+                targetlessApplic<PersonForm>().run {
+                    tupled(firstNameRule, lastNameRule).fix()
                             .map { PersonName(it.a, it.b) }
-                            .andThen(doesNotExistInUserRepo(userRepo).notarget())
-
+                            .andThen(doesNotExistInUserRepo(userRepo).targetless())
                 }
 
-        val emailRule: TargettedValRule<PersonForm, Email> =
+        val emailRule: TargetlessValRule<PersonForm, Email> =
 
                 required
                         .andThen(
@@ -77,7 +76,7 @@ class HKArrowPersonValidator(private val userRepo: UserRepo) {
                         .target(Field.EMAIL)
 
 
-        val ageRule: TargettedValRule<PersonForm, Int?> =
+        val ageRule: TargetlessValRule<PersonForm, Int?> =
                 optionalOr(
                         isInteger.andThen(between(0, 100))
                 )
@@ -86,8 +85,8 @@ class HKArrowPersonValidator(private val userRepo: UserRepo) {
                         .target(Field.AGE)
 
 
-        val personRule: TargettedValRule<PersonForm, Person> =
-                targettedApplicative<PersonForm>().run {
+        val personRule: TargetlessValRule<PersonForm, Person> =
+                targetlessApplic<PersonForm>().run {
                     tupled(
                             nameRule,
                             emailRule,
@@ -98,18 +97,85 @@ class HKArrowPersonValidator(private val userRepo: UserRepo) {
         return personRule
                 .run(value).fix()
     }
+}
 
+class HKArrowPersonValidatorWithUntargeted(private val userRepo: UserRepo) {
+
+
+    private fun doesNotExistInUserRepo(userRepo: UserRepo): ValidationRule<PersonName, PersonName> =
+            ValidationRule { value, _ ->
+                if (userRepo.findIdBy(value).isPresent)
+                    "Person with name ${value.first} ${value.last} already exists.".invalidNel()
+                else
+                    value.valid()
+            }
+
+    fun validate(value: PersonForm): InvalidOr<Person> {
+
+        val firstNameRule: UntargetedValidationRule<PersonForm, String> =
+                required
+                        .andThen(maxLength(250))
+                        .local { pf: PersonForm -> pf.firstName }
+                        .untarget(Field.FIRSTNAME)
+
+        val lastNameRule: UntargetedValidationRule<PersonForm, String> =
+                required
+                        .andThen(maxLength(250))
+                        .local { pf: PersonForm -> pf.lastName }
+                        .untarget(Field.LASTNAME)
+
+        val nameRule: UntargetedValidationRule<PersonForm, PersonName> =
+                UntargetedValidationRule.applicative<PersonForm>()
+                        .tupled(firstNameRule, lastNameRule).fix()
+                        .map { PersonName(it.a, it.b) }
+                        .andThen(doesNotExistInUserRepo(userRepo).untarget())
+
+        val emailRule: UntargetedValidationRule<PersonForm, Email> =
+                required
+                        .andThen(
+                                ValidationRule.applicative<String>()
+                                        .tupled(
+                                                maxLength(100),
+                                                containing("@")
+                                        ).fix()
+                                        .map { it.a }
+                        )
+                        .map { Email(it) }
+                        .local { pf: PersonForm -> pf.email }
+                        .untarget(Field.EMAIL)
+
+
+        val ageRule: UntargetedValidationRule<PersonForm, Int?> =
+                optionalOr(
+                        isInteger.andThen(between(0, 100))
+                )
+                        .map { it.orNull() }
+                        .local { pf: PersonForm -> pf.age }
+                        .untarget(Field.AGE)
+
+
+        val personRule: UntargetedValidationRule<PersonForm, Person> =
+                UntargetedValidationRule.applicative<PersonForm>()
+                        .tupled(nameRule,
+                                emailRule,
+                                ageRule).fix()
+                        .map { Person(it.a, it.b, it.c) }
+
+        return personRule
+                .run(value).fix()
+    }
 }
 
 
 
-typealias ValidationRuleFun<A, B> = (A, Field) -> Validated<Nel<String>, B>
-typealias TargettedValidationRuleFun<A, B> = (A) -> Validated<Nel<String>, B>
+typealias InvalidOr<B> = Validated<Nel<String>, B>
+typealias PartialInvalid = ValidatedPartialOf<Nel<String>>
+typealias ValidationRuleFun<A, B> = (A, Field) -> InvalidOr<B>
 
-typealias TargettedValRule<A, B> = Kleisli<ValidatedPartialOf<Nel<String>>, A, B>
+typealias TargetlessValRule<A, B> = Kleisli<PartialInvalid, A, B>
 
-fun <A, B, C> TargettedValRule<A, B>.andThen(other: TargettedValRule<B, C>) =
-        TargettedValRule { a: A ->
+fun <A, B, C> TargetlessValRule<A, B>.andThen(other: TargetlessValRule<B, C>) =
+        TargetlessValRule { a: A ->
             run(a).fix().withEither { eitherOfB ->
                 eitherOfB.flatMap { b -> other.run(b).fix().toEither() }
             }
@@ -117,7 +183,53 @@ fun <A, B, C> TargettedValRule<A, B>.andThen(other: TargettedValRule<B, C>) =
 
 
 @higherkind
-class TargettedValidationRule<A, B>(val run: TargettedValidationRuleFun<A, B>) : TargettedValidationRuleOf<A, B> {
+class UntargetedValidationRule<A, B>(val run: (A) -> InvalidOr<B>) : UntargetedValidationRuleOf<A, B> {
+    private val kleisli: Kleisli<PartialInvalid, A, B> = Kleisli(run)
+
+    fun <C> map(f: (B) -> C): UntargetedValidationRule<A, C> =
+            kleisli.map(valApplic, f).asUntargeted()
+
+    fun <C> ap(other: UntargetedValidationRule<A, (B) -> C>) =
+            kleisli.ap(valApplic, other.kleisli).asUntargeted()
+
+    fun <C> andThen(f: UntargetedValidationRule<B, C>): UntargetedValidationRule<A, C> =
+            UntargetedValidationRule { a: A ->
+                run(a).withEither { eitherOfB ->
+                    eitherOfB.flatMap { b -> f.run(b).toEither() }
+                }
+            }
+
+    fun <C> local(f: (C) -> A): UntargetedValidationRule<C, B> =
+            kleisli.local(f).asUntargeted()
+
+
+    companion object {
+        private val valApplic = Validated.applicative(Nel.semigroup<String>())
+        private fun <A> klApplic() = Kleisli.applicative<PartialInvalid, A>(valApplic)
+
+
+        fun <A, B> Kleisli<PartialInvalid, A, B>.asUntargeted(): UntargetedValidationRule<A, B> =
+                UntargetedValidationRule(run.andThen { it.fix() })
+
+        fun <IN, A> just(a: A): UntargetedValidationRule<IN, A> =
+                Kleisli.just<PartialInvalid, IN, A>(valApplic, a).asUntargeted()
+
+
+        fun <A, B, C> tupled(
+                first: UntargetedValidationRule<A, B>,
+                second: UntargetedValidationRule<A, C>): UntargetedValidationRule<A, Tuple2<B, C>> =
+                klApplic<A>().run {
+                    tupled(first.kleisli, second.kleisli).fix().asUntargeted()
+                }
+
+        fun <A, B, C, D> tupled(
+                first: UntargetedValidationRule<A, B>,
+                second: UntargetedValidationRule<A, C>,
+                third: UntargetedValidationRule<A, D>): UntargetedValidationRule<A, Tuple3<B, C, D>> =
+                klApplic<A>().run {
+                    tupled(first.kleisli, second.kleisli, third.kleisli).fix().asUntargeted()
+                }
+    }
 
 }
 
@@ -147,11 +259,17 @@ class ValidationRule<A, B>(val run: ValidationRuleFun<A, B>) : ValidationRuleOf<
                 run(f(c), target)
             }
 
-    fun target(target: Field): TargettedValRule<A, B> =
+    fun target(target: Field): TargetlessValRule<A, B> =
             Kleisli(run.reverse().curried()(target))
 
-    fun notarget(): TargettedValRule<A, B> =
+    fun targetless(): TargetlessValRule<A, B> =
             Kleisli(run.reverse().curried()(Field.FORM))
+
+    fun untarget(target: Field): UntargetedValidationRule<A, B> =
+            UntargetedValidationRule(run.reverse().curried()(target))
+
+    fun untarget(): UntargetedValidationRule<A, B> =
+            UntargetedValidationRule(run.reverse().curried()(Field.FORM))
 
     companion object {
         fun <IN, A> just(a: A): ValidationRule<IN, A> = ValidationRule { _, _ -> Valid(a) }
@@ -282,4 +400,24 @@ interface ValidationRuleApplicativeInstance<IN> : ValidationRuleFunctorInstance<
 
     override fun <A> just(a: A) =
             ValidationRule.just<IN, A>(a)
+}
+
+@instance(UntargetedValidationRule::class)
+interface UntargetedValidationRuleFunctorInstance<IN> : Functor<UntargetedValidationRulePartialOf<IN>> {
+
+    override fun <A, B> Kind<UntargetedValidationRulePartialOf<IN>, A>.map(f: (A) -> B): UntargetedValidationRule<IN, B> =
+            fix().map(f)
+
+}
+
+@instance(UntargetedValidationRule::class)
+interface UntargetedValidationRuleApplicativeInstance<IN> : UntargetedValidationRuleFunctorInstance<IN>, Applicative<UntargetedValidationRulePartialOf<IN>> {
+
+    override fun <A, B> Kind<UntargetedValidationRulePartialOf<IN>, A>.map(f: (A) -> B): UntargetedValidationRule<IN, B> = fix().map(f)
+
+    override fun <A, B> Kind<UntargetedValidationRulePartialOf<IN>, A>.ap(ff: Kind<UntargetedValidationRulePartialOf<IN>, (A) -> B>) =
+            fix().ap(ff.fix())
+
+    override fun <A> just(a: A) =
+            UntargetedValidationRule.just<IN, A>(a)
 }
