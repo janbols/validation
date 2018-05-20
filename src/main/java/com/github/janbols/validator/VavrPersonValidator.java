@@ -44,21 +44,21 @@ public class VavrPersonValidator {
 
         ValidationRule<PersonForm, String> firstNameRule =
                 required
-                        .flatMap(maxLength(250))
+                        .chain(maxLength(250))
                         .from(f -> f.firstName, FIRSTNAME);
 
         ValidationRule<PersonForm, String> lastNameRule =
                 required
-                        .flatMap(maxLength(250))
+                        .chain(maxLength(250))
                         .from(f -> f.lastName, LASTNAME);
 
         ValidationRule<PersonForm, PersonName> nameRule =
                 combine(firstNameRule, lastNameRule, PersonName::new)
-                        .flatMap(doesNotExistInUserRepo(userRepo));
+                        .chain(doesNotExistInUserRepo(userRepo));
 
         ValidationRule<PersonForm, Email> emailRule =
                 required
-                        .flatMap(
+                        .chain(
                                 combine(
                                         maxLength(100),
                                         containing("@"), takeFirst
@@ -68,7 +68,7 @@ public class VavrPersonValidator {
                         .from(f -> f.email, EMAIL);
 
         ValidationRule<PersonForm, Integer> ageRule =
-                optionalOr(isInteger.flatMap(between(0, 100)))
+                optionalOr(isInteger.chain(between(0, 100)))
                         .map(optionalAge -> optionalAge.orElse(null))
                         .from(f -> f.age, AGE);
 
@@ -123,7 +123,7 @@ public class VavrPersonValidator {
         /**
          * Binds the given other {@link ValidationRule} across this validation's success value of this rule.
          */
-        default <C> ValidationRule<A, C> flatMap(ValidationRule<B, C> other) {
+        default <C> ValidationRule<A, C> chain(ValidationRule<B, C> other) {
             return (value, target) -> this.validate(value, target)
                     .flatMap(firstResult -> other.validate(firstResult, target));
         }

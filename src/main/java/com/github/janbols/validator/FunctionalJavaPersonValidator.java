@@ -46,22 +46,22 @@ public class FunctionalJavaPersonValidator {
 
         ValidationRule<PersonForm, String> firstNameRule =
                 required
-                        .bind(maxLength(250))
+                        .chain(maxLength(250))
                         .from(f -> f.firstName, FIRSTNAME);
 
         ValidationRule<PersonForm, String> lastNameRule =
                 required
-                        .bind(maxLength(250))
+                        .chain(maxLength(250))
                         .from(f -> f.lastName, LASTNAME);
 
         ValidationRule<PersonForm, PersonName> nameRule =
-                accumulate(firstNameRule, lastNameRule, PersonName::new)
-                        .bind(doesNotExistInUserRepo(userRepo));
+                combine(firstNameRule, lastNameRule, PersonName::new)
+                        .chain(doesNotExistInUserRepo(userRepo));
 
         ValidationRule<PersonForm, Email> emailRule =
                 required
-                        .bind(
-                                accumulate(
+                        .chain(
+                                combine(
                                         maxLength(100),
                                         containing("@"), takeFirst
                                 )
@@ -70,12 +70,12 @@ public class FunctionalJavaPersonValidator {
                         .from(f -> f.email, EMAIL);
 
         ValidationRule<PersonForm, Integer> ageRule =
-                optionalOr(isInteger.bind(between(0, 100)))
+                optionalOr(isInteger.chain(between(0, 100)))
                         .map(optionalAge -> optionalAge.orElse(null))
                         .from(f -> f.age, AGE);
 
         ValidationRule<PersonForm, Person> personRule =
-                accumulate(
+                combine(
                         nameRule,
                         emailRule,
                         ageRule,
@@ -125,7 +125,7 @@ public class FunctionalJavaPersonValidator {
         /**
          * Binds the given other {@link ValidationRule} across this validation's success value of this rule.
          */
-        default <C> ValidationRule<A, C> bind(ValidationRule<B, C> other) {
+        default <C> ValidationRule<A, C> chain(ValidationRule<B, C> other) {
             return (value, target) -> this.validate(value, target)
                     .bind(firstResult -> other.validate(firstResult, target));
         }
@@ -134,25 +134,25 @@ public class FunctionalJavaPersonValidator {
          * Accumulates errors on the failing side of this or the given other {@link ValidationRule} if one or more are encountered, or applies
          * the given function if all succeeded and returns that value on the successful side.
          */
-        default <C, RESULT> ValidationRule<A, RESULT> accumulate(ValidationRule<A, C> other, BiFunction<B, C, RESULT> composeResult) {
+        default <C, RESULT> ValidationRule<A, RESULT> combine(ValidationRule<A, C> other, BiFunction<B, C, RESULT> composeResult) {
             return (value, target) ->
                     this.validate(value, target).accumulate(combineErrors,
                             other.validate(value, target),
                             composeResult::apply);
         }
 
-        static <A, B, C, RESULT> ValidationRule<A, RESULT> accumulate(
+        static <A, B, C, RESULT> ValidationRule<A, RESULT> combine(
                 ValidationRule<A, B> first,
                 ValidationRule<A, C> second,
                 BiFunction<B, C, RESULT> composeResult) {
-            return first.accumulate(second, composeResult);
+            return first.combine(second, composeResult);
         }
 
         /**
          * Accumulates errors on the failing side of this or the second or third {@link ValidationRule}s if one or more are encountered, or applies
          * the given function if all succeeded and returns that value on the successful side.
          */
-        default <C, D, RESULT> ValidationRule<A, RESULT> accumulate(
+        default <C, D, RESULT> ValidationRule<A, RESULT> combine(
                 ValidationRule<A, C> second,
                 ValidationRule<A, D> third,
                 F3<B, C, D, RESULT> composeResult) {
@@ -164,13 +164,13 @@ public class FunctionalJavaPersonValidator {
                                     composeResult);
         }
 
-        static <A, B, C, D, RESULT> ValidationRule<A, RESULT> accumulate(
+        static <A, B, C, D, RESULT> ValidationRule<A, RESULT> combine(
                 ValidationRule<A, B> first,
                 ValidationRule<A, C> second,
                 ValidationRule<A, D> third,
                 F3<B, C, D, RESULT> composeResult
         ) {
-            return first.accumulate(second, third, composeResult);
+            return first.combine(second, third, composeResult);
         }
 
         /**

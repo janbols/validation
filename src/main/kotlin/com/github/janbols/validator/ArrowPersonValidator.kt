@@ -15,7 +15,7 @@ import com.github.janbols.validator.ExtraRules.isInteger
 import com.github.janbols.validator.ExtraRules.maxLength
 import com.github.janbols.validator.ExtraRules.optionalOr
 import com.github.janbols.validator.ExtraRules.required
-import com.github.janbols.validator.ValidationRule.Companion.tupled
+import com.github.janbols.validator.ValidationRule.Companion.combine
 
 
 class ArrowPersonValidator(private val userRepo: UserRepo) {
@@ -33,38 +33,38 @@ class ArrowPersonValidator(private val userRepo: UserRepo) {
 
         val firstNameRule: ValidationRule<PersonForm, String> =
                 required
-                        .andThen(maxLength(250))
-                        .reTarget(Field.FIRSTNAME) { pf: PersonForm -> pf.firstName }
+                        .chain(maxLength(250))
+                        .from(Field.FIRSTNAME) { pf: PersonForm -> pf.firstName }
 
         val lastNameRule: ValidationRule<PersonForm, String> =
                 required
-                        .andThen(maxLength(250))
-                        .reTarget(Field.LASTNAME) { pf: PersonForm -> pf.lastName }
+                        .chain(maxLength(250))
+                        .from(Field.LASTNAME) { pf: PersonForm -> pf.lastName }
 
         val nameRule: ValidationRule<PersonForm, PersonName> =
-                tupled(firstNameRule, lastNameRule)
+                combine(firstNameRule, lastNameRule)
                         .map { PersonName(it.a, it.b) }
-                        .andThen(doesNotExistInUserRepo(userRepo))
+                        .chain(doesNotExistInUserRepo(userRepo))
 
         val emailRule: ValidationRule<PersonForm, Email> =
                 required
-                        .andThen(tupled(
+                        .chain(combine(
                                 maxLength(100),
                                 containing("@")
                         ).map { it.a }
                         )
                         .map { Email(it) }
-                        .reTarget(Field.EMAIL) { pf: PersonForm -> pf.email }
+                        .from(Field.EMAIL) { pf: PersonForm -> pf.email }
 
         val ageRule: ValidationRule<PersonForm, Int?> =
                 optionalOr(
-                        isInteger.andThen(between(0, 100))
+                        isInteger.chain(between(0, 100))
                 )
                         .map { it.orNull() }
-                        .reTarget(Field.AGE) { pf: PersonForm -> pf.age }
+                        .from(Field.AGE) { pf: PersonForm -> pf.age }
 
         val personRule: ValidationRule<PersonForm, Person> =
-                tupled(
+                combine(
                         nameRule,
                         emailRule,
                         ageRule
@@ -76,9 +76,8 @@ class ArrowPersonValidator(private val userRepo: UserRepo) {
 
 }
 
-typealias ValidationRuleFun<A, B> = (A, Field) -> Validated<Nel<String>, B>
 
-class ValidationRule<A, B>(val run: ValidationRuleFun<A, B>) {
+class ValidationRule<A, B>(val run: (A, Field) -> Validated<Nel<String>, B>) {
 
     fun <C> map(f: (B) -> C): ValidationRule<A, C> =
             ValidationRule(run.andThen { it.map(f) })
@@ -91,7 +90,7 @@ class ValidationRule<A, B>(val run: ValidationRuleFun<A, B>) {
             }
 
 
-    fun <C> andThen(f: ValidationRule<B, C>): ValidationRule<A, C> =
+    fun <C> chain(f: ValidationRule<B, C>): ValidationRule<A, C> =
             ValidationRule { a: A, target ->
                 run(a, target).withEither { eitherOfB ->
                     eitherOfB.flatMap { b -> f.run(b, target).toEither() }
@@ -108,23 +107,23 @@ class ValidationRule<A, B>(val run: ValidationRuleFun<A, B>) {
                 run(a, newTarget)
             }
 
-    fun <C> reTarget(newTarget: Field, f: (C) -> A): ValidationRule<C, B> =
+    fun <C> from(newTarget: Field, f: (C) -> A): ValidationRule<C, B> =
             local(f).target(newTarget)
 
 
     companion object {
         fun <IN, A> just(a: A): ValidationRule<IN, A> = ValidationRule { _, _ -> Valid(a) }
 
-        fun <A, B, C> tupled(
+        fun <A, B, C> combine(
                 first: ValidationRule<A, B>,
                 second: ValidationRule<A, C>): ValidationRule<A, Tuple2<B, C>> =
                 second.ap(first.map { b -> { c: C -> Tuple2(b, c) } })
 
-        fun <A, B, C, D> tupled(
+        fun <A, B, C, D> combine(
                 first: ValidationRule<A, B>,
                 second: ValidationRule<A, C>,
                 third: ValidationRule<A, D>): ValidationRule<A, Tuple3<B, C, D>> =
-                third.ap(tupled(first, second).map { bc -> { d: D -> Tuple3(bc.a, bc.b, d) } })
+                third.ap(combine(first, second).map { bc -> { d: D -> Tuple3(bc.a, bc.b, d) } })
     }
 }
 
